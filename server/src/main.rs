@@ -1,14 +1,13 @@
-use actix_web::{guard, web, App, HttpServer};
-use macros::{pipe, pipe_fun};
+use actix_web::{App, HttpServer};
 use std::env;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
-// Locals
-mod routes;
 #[macro_use]
 mod utils;
+mod controllers;
+mod routes;
 
-use routes::index;
+use routes::routes;
 
 #[actix_web::main]
 pub async fn main() -> std::io::Result<()> {
@@ -22,18 +21,10 @@ pub async fn main() -> std::io::Result<()> {
     } else {
         8000_u16
     };
+
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port));
-    HttpServer::new(|| {
-        let app = pipe!(
-            App::new()
-            => [route("/", web::get().to(index::get))]
-            => [route("/{name}", web::get().to(index::get_name))]
-            => [route("/{name}", json_post!().to(index::post_name_json))]
-            => [route("/{name}", urlencoded_post!().to(index::post_name_form))]
-        );
-        app
-    })
-    .bind(addr)?
-    .run()
-    .await
+    HttpServer::new(|| App::new().configure(routes))
+        .bind(addr)?
+        .run()
+        .await
 }
