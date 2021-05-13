@@ -1,8 +1,12 @@
-use actix_web::{web, App, HttpServer};
+use actix_web::{guard, web, App, HttpServer};
 use macros::{pipe, pipe_fun};
 use std::env;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+// Locals
 mod routes;
+#[macro_use]
+mod utils;
 
 use routes::index;
 
@@ -23,6 +27,9 @@ pub async fn main() -> std::io::Result<()> {
         let app = pipe!(
             App::new()
             => [route("/", web::get().to(index::get))]
+            => [route("/{name}", web::get().to(index::get_name))]
+            => [route("/{name}", json_post!().to(index::post_name_json))]
+            => [route("/{name}", urlencoded_post!().to(index::post_name_form))]
         );
         app
     })
