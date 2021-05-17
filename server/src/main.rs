@@ -1,10 +1,11 @@
 use actix_web::{App, HttpServer};
 use std::env;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
 #[macro_use]
 mod utils;
+
 mod controllers;
+mod core;
 mod routes;
 
 use routes::routes;
