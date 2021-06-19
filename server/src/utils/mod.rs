@@ -1,3 +1,5 @@
+#[allow(unused_macros)]
+#[allow(dead_code)]
 macro_rules! json_route {
     ($method:ident) => {
         actix_web::web::$method()
@@ -5,6 +7,8 @@ macro_rules! json_route {
     };
 }
 
+#[allow(unused_macros)]
+#[allow(dead_code)]
 macro_rules! urlencoded_route {
     ($method:ident) => {
         actix_web::web::$method().guard(actix_web::guard::Header(

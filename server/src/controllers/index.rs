@@ -1,6 +1,8 @@
 use actix_web::{web, Responder};
 use serde::Deserialize;
 
+use crate::core::extractors::BodyExtractor;
+
 pub async fn get() -> impl Responder {
     "Hello World"
 }
@@ -19,12 +21,7 @@ pub struct PostName {
     pub name: String,
 }
 
-pub async fn post_name_json(body: web::Json<PostName>) -> impl Responder {
+pub async fn post_name(body: BodyExtractor<PostName>) -> impl Responder {
     dbg!("json");
-    body.name.as_str().to_owned()
-}
-
-pub async fn post_name_form(body: web::Form<PostName>) -> impl Responder {
-    dbg!("form");
     body.name.as_str().to_owned()
 }
