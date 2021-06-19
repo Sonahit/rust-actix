@@ -1280,7 +1280,9 @@ dependencies = [
  "futures-util",
  "log",
  "macros",
+ "mime",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

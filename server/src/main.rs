@@ -1,4 +1,5 @@
-use actix_web::{App, HttpServer};
+use actix_web::{App, HttpServer, *};
+
 use std::env;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 #[macro_use]
@@ -24,8 +25,13 @@ pub async fn main() -> std::io::Result<()> {
     };
 
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), port));
-    HttpServer::new(|| App::new().configure(routes))
-        .bind(addr)?
-        .run()
-        .await
+    HttpServer::new(|| {
+        let json_config = web::JsonConfig::default().error_handler(|err, _req| {
+            error::InternalError::from_response(err, HttpResponse::Conflict().finish()).into()
+        });
+        App::new().configure(routes).app_data(json_config)
+    })
+    .bind(addr)?
+    .run()
+    .await
 }

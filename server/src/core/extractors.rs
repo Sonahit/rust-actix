@@ -1,15 +1,34 @@
 use actix_http::{http::header, Payload};
 use actix_web::dev::{JsonBody, UrlEncoded};
+use actix_web::error::{JsonPayloadError, UrlencodedError};
 use actix_web::web::{FormConfig, JsonConfig};
 use actix_web::*;
 use futures_util::future::{err, FutureExt, LocalBoxFuture};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::ops;
+use std::rc::Rc;
 use std::sync::Arc;
+
+#[derive(Clone)]
+struct PubJsonConfig {
+    limit: usize,
+    err_handler: Option<Arc<dyn Fn(JsonPayloadError, &HttpRequest) -> Error + Send + Sync>>,
+}
+#[derive(Clone)]
+pub struct PubFormConfig {
+    limit: usize,
+    err_handler: Option<Rc<dyn Fn(UrlencodedError, &HttpRequest) -> Error>>,
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct BodyExtractor<T>(pub T);
+
+impl<T> BodyExtractor<T> {
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+}
 
 impl<T> ops::Deref for BodyExtractor<T> {
     type Target = T;
@@ -35,7 +54,7 @@ where
 
     #[inline]
     fn from_request(req: &HttpRequest, payload: &mut Payload) -> Self::Future {
-        let limit = 4086;
+        let req2 = req.clone();
         let mut content_type = req.headers().get(header::CONTENT_TYPE).take();
         let content_type = match content_type.is_some() {
             true => Ok(content_type.take().unwrap().to_str().unwrap()),
@@ -43,8 +62,10 @@ where
         };
         match content_type {
             Ok("application/json") => {
-                let req2 = req.clone().to_owned();
-                JsonBody::new(&req2.clone(), payload, Some(Arc::from(|_| true)))
+                let PubJsonConfig {
+                    limit, err_handler, ..
+                } = BodyConfig::get_json_config(req2.clone());
+                JsonBody::new(&req2, payload, Some(Arc::from(|_| true)))
                     .limit(limit)
                     .map(move |res| match res {
                         Err(e) => {
@@ -53,19 +74,30 @@ where
                              Request path: {}",
                                 (req2).path()
                             );
-                            Err(e.into())
+                            if let Some(err) = err_handler {
+                                Err((*err)(e, &req2))
+                            } else {
+                                Err(e.into())
+                            }
                         }
                         Ok(data) => Ok(BodyExtractor(data)),
                     })
                     .boxed_local()
             }
             Ok("application/x-www-form-urlencoded") => {
-                let req2 = req.clone().to_owned();
+                let PubFormConfig { limit, err_handler } =
+                    BodyConfig::get_form_config(req2.clone());
 
-                UrlEncoded::new(&req2.clone(), payload)
+                UrlEncoded::new(&req2, payload)
                     .limit(limit)
                     .map(move |res| match res {
-                        Err(e) => Err(e.into()),
+                        Err(e) => {
+                            if let Some(err) = err_handler {
+                                Err((*err)(e, &req2))
+                            } else {
+                                Err(e.into())
+                            }
+                        }
                         Ok(item) => Ok(BodyExtractor(item)),
                     })
                     .boxed_local()
@@ -77,15 +109,45 @@ where
 
 #[derive(Clone)]
 pub struct BodyConfig {
-    json: JsonConfig,
-    urlencoded: FormConfig,
+    json: PubJsonConfig,
+    urlencoded: PubFormConfig,
+}
+
+impl BodyConfig {
+    fn get_json_config(req: HttpRequest) -> PubJsonConfig {
+        unsafe {
+            match std::mem::transmute::<Option<&JsonConfig>, Option<&PubJsonConfig>>(
+                req.app_data::<JsonConfig>(),
+            ) {
+                Some(d) => d.clone(),
+                None => std::mem::transmute(BodyConfig::default().json),
+            }
+        }
+    }
+
+    fn get_form_config(req: HttpRequest) -> PubFormConfig {
+        unsafe {
+            match std::mem::transmute::<Option<&FormConfig>, Option<&PubFormConfig>>(
+                req.app_data::<FormConfig>(),
+            ) {
+                Some(d) => d.clone(),
+                None => std::mem::transmute(BodyConfig::default().urlencoded),
+            }
+        }
+    }
 }
 
 impl Default for BodyConfig {
     fn default() -> Self {
         BodyConfig {
-            json: JsonConfig::default(),
-            urlencoded: FormConfig::default(),
+            json: PubJsonConfig {
+                limit: 32_768, // 2^15 bytes, (~32kB)
+                err_handler: None,
+            },
+            urlencoded: PubFormConfig {
+                limit: 16_384, // 2^14 bytes (~16kB)
+                err_handler: None,
+            },
         }
     }
 }
